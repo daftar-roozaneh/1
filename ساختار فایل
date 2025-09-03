@@ -1,0 +1,13 @@
+daftar-roozaneh/
+├─ package.json
+├─ tsconfig.json
+├─ next.config.js
+├─ app/
+│  ├─ layout.tsx
+│  ├─ page.tsx
+│  ├─ globals.css
+│  ├─ auth/
+│  │  └─ login/page.tsx
+│  ├─ boards/page.tsx
+│  └─ b/[id]/page.tsx
+└─ lib/supabase.ts
