@@ -1,0 +1,21 @@
+{
+  "name": "daftar-roozaneh",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000"
+  },
+  "dependencies": {
+    "@dnd-kit/core": "6.1.0",
+    "@supabase/supabase-js": "2.45.0",
+    "next": "14",
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "20.11.19",
+    "@types/react": "18.2.43",
+    "typescript": "5.5.4"
+  }
+}
