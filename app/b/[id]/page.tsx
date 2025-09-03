@@ -1,0 +1,108 @@
+'use client';
+import { useEffect, useState } from 'react';
+import { supabase, currentUserId } from '@/lib/supabase';
+import { DndContext, useDraggable, useDroppable } from '@dnd-kit/core';
+
+export default function BoardPage({ params }:{ params:{ id:string } }){
+  const boardId = params.id;
+  const [lists,setLists]=useState<any[]>([]);
+  const [cardsByList,setCardsByList]=useState<Record<string, any[]>>({});
+  const [newListTitle,setNewListTitle]=useState('');
+
+  useEffect(()=>{
+    (async ()=>{
+      const me = await currentUserId();
+      if(!me){ location.href='/auth/login'; return; }
+      await refreshAll();
+
+      const ch = supabase.channel(`board:${boardId}`)
+        .on('postgres_changes', { event:'*', schema:'public', table:'lists', filter:`board_id=eq.${boardId}`}, refreshLists)
+        .on('postgres_changes', { event:'*', schema:'public', table:'cards'}, refreshCards)
+        .subscribe();
+
+      return ()=> { supabase.removeChannel(ch); };
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[boardId]);
+
+  async function refreshLists(){
+    const { data } = await supabase.from('lists').select('*').eq('board_id',boardId).order('position');
+    setLists(data||[]);
+  }
+  async function refreshCards(){
+    const { data: ids } = await supabase.from('lists').select('id').eq('board_id',boardId);
+    const listIds = (ids||[]).map(i=>i.id);
+    if(listIds.length===0){ setCardsByList({}); return; }
+    const { data: cards } = await supabase.from('cards').select('*').in('list_id', listIds).order('position');
+    const g:any={}; (cards||[]).forEach(c=>{ (g[c.list_id]=g[c.list_id]||[]).push(c); });
+    setCardsByList(g);
+  }
+  async function refreshAll(){ await refreshLists(); await refreshCards(); }
+
+  async function addList(){
+    const pos = (Math.max(0, ...lists.map((l:any)=>l.position||0)) + 100);
+    await supabase.from('lists').insert({ board_id: boardId, title: newListTitle || 'لیست جدید', position: pos });
+    setNewListTitle('');
+  }
+
+  async function addCard(listId:string, title:string){
+    const last = Math.max(0, ...((cardsByList[listId]||[]).map((c:any)=>c.position||0)));
+    await supabase.from('cards').insert({ list_id:listId, title, position: last + 100 });
+  }
+
+  async function moveCardToListEnd(cardId:string, toListId:string){
+    const last = Math.max(0, ...((cardsByList[toListId]||[]).map((c:any)=>c.position||0)));
+    await supabase.from('cards').update({ list_id: toListId, position: last + 100 }).eq('id', cardId);
+  }
+
+  return (
+    <div>
+      <div className="card" style={{marginBottom:8}}>
+        <div className="toolbar">
+          <input placeholder="عنوان لیست جدید" value={newListTitle} onChange={e=>setNewListTitle(e.target.value)} />
+          <button className="primary" onClick={addList}>افزودن لیست</button>
+        </div>
+      </div>
+
+      <DndContext onDragEnd={({active, over})=>{
+        if(!over) return;
+        if(typeof over.id === 'string' && over.id.startsWith('list-')){
+          const toListId = over.id.replace('list-','');
+          moveCardToListEnd(String(active.id), toListId);
+        }
+      }}>
+        <div className="board">
+          {lists.map((l:any)=>(
+            <ListColumn key={l.id} list={l} cards={cardsByList[l.id]||[]} onAdd={t=>addCard(l.id, t)} />
+          ))}
+        </div>
+      </DndContext>
+    </div>
+  );
+}
+
+function ListColumn({ list, cards, onAdd }:{ list:any, cards:any[], onAdd:(t:string)=>void }){
+  const [title,setTitle]=useState('');
+  const { setNodeRef } = useDroppable({ id: `list-${list.id}` });
+
+  return (
+    <section className="list" ref={setNodeRef}>
+      <h3>{list.title}</h3>
+      <div style={{display:'flex', gap:8, margin:'0 8px 8px'}}>
+        <input placeholder="عنوان کارت" value={title} onChange={e=>setTitle(e.target.value)} />
+        <button className="ghost" onClick={()=>{ if(title.trim()){ onAdd(title.trim()); setTitle(''); } }}>+</button>
+      </div>
+      {cards.map(c => (<CardItem key={c.id} card={c} />))}
+    </section>
+  );
+}
+
+function CardItem({ card }:{ card:any }){
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: card.id });
+  const style:any = { transform: transform?`translate3d(${transform.x}px,${transform.y}px,0)`:'none', opacity: isDragging?0.6:1 };
+  return (
+    <div className="kcard" ref={setNodeRef} style={style} {...listeners} {...attributes}>
+      <div><b>{card.title}</b></div>
+    </div>
+  );
+}
